@@ -11,6 +11,13 @@ export default defineConfig(({ mode }) => {
   const frontendPort = Number.parseInt(env.FRONTEND_PORT || env.VITE_FRONTEND_PORT || '', 10);
   const resolvedFrontendPort = Number.isFinite(frontendPort) && frontendPort > 0 ? frontendPort : 5173;
   const frontendHost = (env.VITE_DEV_HOST || '127.0.0.1').trim() || '127.0.0.1';
+  const allowedHosts = (env.VITE_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean);
+
+  if (!allowedHosts.includes('localhost')) allowedHosts.push('localhost');
+  if (!allowedHosts.includes('127.0.0.1')) allowedHosts.push('127.0.0.1');
 
   return {
     root: 'src/web',
@@ -32,6 +39,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: frontendHost,
       port: resolvedFrontendPort,
+      allowedHosts,
       proxy: {
         '^/api($|/)': {
           target: proxyTarget,
