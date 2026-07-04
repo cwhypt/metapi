@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { extractClientIp, isIpAllowed } from './auth.js';
+import { describe, expect, it, vi } from 'vitest';
+import { config } from '../config.js';
+import { authMiddleware, extractClientIp, isIpAllowed } from './auth.js';
 
 describe('auth middleware IP helpers', () => {
   it('extracts first forwarded IP and normalizes ipv4-mapped address', () => {
@@ -25,5 +26,33 @@ describe('auth middleware IP helpers', () => {
   it('ignores malformed CIDR entries instead of matching unexpectedly', () => {
     expect(isIpAllowed('8.8.8.8', ['8.8.8.0/99'])).toBe(false);
     expect(isIpAllowed('8.8.8.8', ['not-an-ip/24'])).toBe(false);
+  });
+
+  it('authenticates by token even when a legacy admin IP allowlist is configured', async () => {
+    const originalAuthToken = config.authToken;
+    const originalAdminIpAllowlist = config.adminIpAllowlist;
+
+    config.authToken = 'secret-token';
+    config.adminIpAllowlist = ['203.0.113.9'];
+
+    const send = vi.fn();
+    const code = vi.fn(() => ({ send }));
+    const reply = { code } as any;
+    const request = {
+      ip: '198.51.100.7',
+      headers: {
+        authorization: 'Bearer secret-token',
+        'x-forwarded-for': '198.51.100.7',
+      },
+    } as any;
+
+    try {
+      await authMiddleware(request, reply);
+      expect(code).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      config.authToken = originalAuthToken;
+      config.adminIpAllowlist = originalAdminIpAllowlist;
+    }
   });
 });

@@ -107,12 +107,6 @@ export function isIpAllowed(clientIp: string, allowlist: string[]): boolean {
 }
 
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {
-  const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
-  if (!isIpAllowed(clientIp, config.adminIpAllowlist)) {
-    reply.code(403).send({ error: 'IP not allowed' });
-    return;
-  }
-
   const auth = request.headers.authorization;
   if (!auth) {
     reply.code(401).send({ error: 'Missing Authorization header' });
