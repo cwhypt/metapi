@@ -133,5 +133,10 @@
     "name": "cita-777",
     "email": "cita-777@users.noreply.github.com",
     "url": "https://github.com/cita-777"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.10.0": true,
+    "esbuild@0.27.3": true,
+    "sharp@0.34.5": true
   }
 }
