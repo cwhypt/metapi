@@ -40,6 +40,13 @@ export type DownstreamSiteOption = {
   accountCount: number;
 };
 
+export type DownstreamAccountOption = {
+  accountId: number;
+  siteId: number;
+  siteName: string;
+  accountName: string;
+};
+
 export type DownstreamCredentialOption = {
   key: string;
   ref: DownstreamExcludedCredentialRef;
@@ -127,6 +134,24 @@ function buildExcludedCredentialRefKey(ref: DownstreamExcludedCredentialRef): st
 
 function normalizeExcludedSiteIds(values: number[]): number[] {
   return uniqIds(values).sort((left, right) => left - right);
+}
+
+function accountDefaultExclusionKey(option: DownstreamAccountOption): string {
+  return `default_api_key:${option.siteId}:${option.accountId}`;
+}
+
+function setAccountDefaultExclusion(
+  refs: DownstreamExcludedCredentialRef[],
+  option: DownstreamAccountOption,
+  excluded: boolean,
+): DownstreamExcludedCredentialRef[] {
+  const targetKey = accountDefaultExclusionKey(option);
+  const filtered = refs.filter((ref) => buildExcludedCredentialRefKey(ref) !== targetKey);
+  if (!excluded) return normalizeExcludedCredentialRefs(filtered);
+  return normalizeExcludedCredentialRefs([
+    ...filtered,
+    { kind: 'default_api_key', siteId: option.siteId, accountId: option.accountId },
+  ]);
 }
 
 function normalizeExcludedCredentialRefs(values: DownstreamExcludedCredentialRef[]): DownstreamExcludedCredentialRef[] {
@@ -252,6 +277,7 @@ export default function DownstreamKeyEditorModal({
   exclusionSourceLoading,
   siteOptions,
   credentialOptions,
+  accountOptions,
 }: {
   open: boolean;
   editingItem: { id: number } | null;
@@ -266,11 +292,13 @@ export default function DownstreamKeyEditorModal({
   exclusionSourceLoading: boolean;
   siteOptions: DownstreamSiteOption[];
   credentialOptions: DownstreamCredentialOption[];
+  accountOptions: DownstreamAccountOption[];
 }) {
   const [modelSearch, setModelSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
   const [siteSearch, setSiteSearch] = useState('');
   const [credentialSearch, setCredentialSearch] = useState('');
+  const [accountSearch, setAccountSearch] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
@@ -279,6 +307,7 @@ export default function DownstreamKeyEditorModal({
       setGroupSearch('');
       setSiteSearch('');
       setCredentialSearch('');
+      setAccountSearch('');
       setAdvancedOpen(false);
     }
   }, [open]);
@@ -331,6 +360,51 @@ export default function DownstreamKeyEditorModal({
       || item.detail.toLowerCase().includes(keyword)
     ));
   }, [credentialOptions, credentialSearch]);
+
+  const accountExcludedKeys = useMemo(
+    () => new Set(
+      form.excludedCredentialRefs
+        .filter((ref) => ref.kind === 'default_api_key')
+        .map((ref) => buildExcludedCredentialRefKey(ref)),
+    ),
+    [form.excludedCredentialRefs],
+  );
+
+  const filteredAccounts = useMemo(() => {
+    const keyword = accountSearch.trim().toLowerCase();
+    if (!keyword) return accountOptions;
+    return accountOptions.filter((account) => (
+      account.siteName.toLowerCase().includes(keyword)
+      || account.accountName.toLowerCase().includes(keyword)
+    ));
+  }, [accountOptions, accountSearch]);
+
+  const allowedAccountCount = useMemo(
+    () => accountOptions.filter((account) => !accountExcludedKeys.has(accountDefaultExclusionKey(account))).length,
+    [accountOptions, accountExcludedKeys],
+  );
+
+  const clearDefaultApiKeyExclusions = (prev: DownstreamKeyEditorForm): DownstreamKeyEditorForm => ({
+    ...prev,
+    excludedCredentialRefs: normalizeExcludedCredentialRefs(
+      prev.excludedCredentialRefs.filter((ref) => ref.kind !== 'default_api_key'),
+    ),
+  });
+
+  const excludeAllAccounts = (prev: DownstreamKeyEditorForm): DownstreamKeyEditorForm => {
+    const defaultApiKeyRefs: DownstreamExcludedCredentialRef[] = accountOptions.map((account) => ({
+      kind: 'default_api_key',
+      siteId: account.siteId,
+      accountId: account.accountId,
+    }));
+    return {
+      ...prev,
+      excludedCredentialRefs: normalizeExcludedCredentialRefs([
+        ...prev.excludedCredentialRefs.filter((ref) => ref.kind !== 'default_api_key'),
+        ...defaultApiKeyRefs,
+      ]),
+    };
+  };
 
   const selectedModelCount = form.selectedModels.length;
   const selectedGroupCount = normalizedSelectedGroupRouteIds.length;
@@ -544,6 +618,51 @@ export default function DownstreamKeyEditorModal({
                             {!route.enabled ? <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--color-danger)' }}>已禁用</span> : null}
                           </div>
                           <code style={{ display: 'block', marginTop: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>{route.modelPattern}</code>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="downstream-key-advanced-panel">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div>
+                    <div className="downstream-key-modal-section-title">允许使用的账号</div>
+                    <div className="downstream-key-modal-help">未勾选的账号会整体排除（默认 API Key 与全部令牌通道均不可用）；余额展示与真实转发路由都受此限制。</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button type="button" className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => onChange(clearDefaultApiKeyExclusions)}>全部允许</button>
+                    <button type="button" className="btn btn-ghost" style={{ border: '1px solid var(--color-border)' }} onClick={() => onChange(excludeAllAccounts)}>全部排除</button>
+                  </div>
+                </div>
+                <div className="downstream-key-modal-meta">已允许 {allowedAccountCount} / {accountOptions.length} 个账号</div>
+                <div className="toolbar-search" style={{ maxWidth: '100%' }}>
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input value={accountSearch} onChange={(e) => setAccountSearch(e.target.value)} placeholder="搜索站点 / 账号" />
+                </div>
+                <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {exclusionSourceLoading ? (
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>加载站点与账号中...</div>
+                  ) : filteredAccounts.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>暂无可选账号</div>
+                  ) : filteredAccounts.map((account) => {
+                    const checked = !accountExcludedKeys.has(accountDefaultExclusionKey(account));
+                    return (
+                      <label key={`${account.siteId}:${account.accountId}`} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--color-border-light)', background: checked ? 'color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-card))' : 'var(--color-bg-card)' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => onChange((prev) => ({
+                            ...prev,
+                            excludedCredentialRefs: setAccountDefaultExclusion(prev.excludedCredentialRefs, account, !e.target.checked),
+                          }))}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 600 }}>{account.accountName}</div>
+                          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--color-text-muted)' }}>{account.siteName}</div>
                         </div>
                       </label>
                     );

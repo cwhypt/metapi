@@ -24,6 +24,7 @@ import { oauthRoutes } from './routes/api/oauth.js';
 import { siteAnnouncementsRoutes } from './routes/api/siteAnnouncements.js';
 import { updateCenterRoutes } from './routes/api/updateCenter.js';
 import { proxyRoutes } from './routes/proxy/router.js';
+import { newApiCompatRoutes } from './routes/proxy/newApiCompat.js';
 import { startScheduler } from './services/checkinScheduler.js';
 import * as routeRefreshWorkflow from './services/routeRefreshWorkflow.js';
 import { startProxyFileRetentionService, stopProxyFileRetentionService } from './services/proxyFileRetentionService.js';
@@ -232,6 +233,9 @@ await app.register(oauthRoutes);
 
 // Register OpenAI-compatible proxy routes
 await app.register(proxyRoutes);
+
+// Register new-api compatible management endpoints (balance reporting for upstream metapi instances)
+await app.register(newApiCompatRoutes);
 
 // Serve static web frontend in production
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), '../web');

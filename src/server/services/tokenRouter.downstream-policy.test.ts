@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
 
 type DbModule = typeof import('../db/index.js');
 type TokenRouterModule = typeof import('./tokenRouter.js');
@@ -561,5 +562,92 @@ describe('TokenRouter downstream policy', () => {
     expect(pick?.channel.id).toBe(allowedChannel.id);
     expect(blockedCandidate?.eligible).toBe(false);
     expect(blockedCandidate?.reason).toContain('API Key/令牌已被下游密钥排除');
+  });
+
+  it('excludes an entire account by default api key ref even when channels use explicit tokens', async () => {
+    const site = await db.insert(schema.sites).values({
+      name: 'site-default-token',
+      url: 'https://default-token.example.com',
+      platform: 'new-api',
+      status: 'active',
+    }).returning().get();
+
+    const blockedAccount = await db.insert(schema.accounts).values({
+      siteId: site.id,
+      username: 'user-blocked-token',
+      accessToken: 'access-blocked-token',
+      apiToken: 'sk-blocked-default-token',
+      status: 'active',
+    }).returning().get();
+    const allowedAccount = await db.insert(schema.accounts).values({
+      siteId: site.id,
+      username: 'user-allowed-token',
+      accessToken: 'access-allowed-token',
+      apiToken: 'sk-allowed-default-token',
+      status: 'active',
+    }).returning().get();
+
+    const blockedToken = await db.insert(schema.accountTokens).values({
+      accountId: blockedAccount.id,
+      name: 'blocked-token',
+      token: 'sk-blocked-explicit',
+      enabled: true,
+      isDefault: true,
+    }).returning().get();
+    const allowedToken = await db.insert(schema.accountTokens).values({
+      accountId: allowedAccount.id,
+      name: 'allowed-token',
+      token: 'sk-allowed-explicit',
+      enabled: true,
+      isDefault: true,
+    }).returning().get();
+
+    const route = await db.insert(schema.tokenRoutes).values({
+      modelPattern: 'gpt-5-mini',
+      enabled: true,
+    }).returning().get();
+
+    await db.insert(schema.routeChannels).values([
+      {
+        routeId: route.id,
+        accountId: blockedAccount.id,
+        tokenId: blockedToken.id,
+        priority: 0,
+        weight: 10,
+        enabled: true,
+      },
+      {
+        routeId: route.id,
+        accountId: allowedAccount.id,
+        tokenId: allowedToken.id,
+        priority: 0,
+        weight: 10,
+        enabled: true,
+      },
+    ]);
+
+    const router = new TokenRouter();
+    const policy: any = {
+      allowedRouteIds: [route.id],
+      supportedModels: [],
+      siteWeightMultipliers: {},
+      excludedSiteIds: [],
+      excludedCredentialRefs: [
+        { kind: 'default_api_key', siteId: site.id, accountId: blockedAccount.id },
+      ],
+    };
+
+    const pick = await router.selectChannel('gpt-5-mini', policy);
+    const decision = await router.explainSelectionForRoute(route.id, 'gpt-5-mini', [], policy);
+    const blockedChannelRow = await db.select().from(schema.routeChannels)
+      .where(eq(schema.routeChannels.accountId, blockedAccount.id))
+      .get();
+    const blockedCandidate = decision.candidates.find((item) => item.channelId === blockedChannelRow?.id);
+    const allowedCandidate = decision.candidates.find((item) => item.channelId !== blockedChannelRow?.id);
+
+    expect(blockedCandidate?.eligible).toBe(false);
+    expect(blockedCandidate?.reason).toContain('API Key/令牌已被下游密钥排除');
+    expect(allowedCandidate?.eligible).toBe(true);
+    expect(pick?.channel.id).toBe(allowedCandidate?.channelId);
   });
 });

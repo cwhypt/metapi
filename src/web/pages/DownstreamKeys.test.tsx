@@ -873,7 +873,7 @@ describe('DownstreamKeys page', () => {
       });
       await flushMicrotasks();
 
-      const siteLabel = root!.root.findAll((node) => node.type === 'label' && collectText(node).includes('站点B'))[0];
+      const siteLabel = root!.root.findAll((node) => node.type === 'label' && collectText(node).includes('站点B1 个账号'))[0];
       const tokenLabel = root!.root.findAll((node) => node.type === 'label' && collectText(node).includes('token-a'))[0];
       const defaultApiKeyLabel = root!.root.findAll((node) => node.type === 'label' && collectText(node).includes('默认 API Key'))[0];
       const siteCheckbox = siteLabel.findByType('input');
@@ -900,6 +900,133 @@ describe('DownstreamKeys page', () => {
         excludedCredentialRefs: [
           { kind: 'account_token', siteId: 201, accountId: 101, tokenId: 301 },
           { kind: 'default_api_key', siteId: 201, accountId: 101 },
+        ],
+      }));
+    } finally {
+      root?.unmount();
+    }
+  });
+
+  it('renders allowed accounts panel and persists account exclusions', async () => {
+    let root!: WebTestRenderer;
+    try {
+      await act(async () => {
+        root = create(
+          <MemoryRouter initialEntries={['/downstream-keys']}>
+            <ToastProvider>
+              <DownstreamKeys />
+            </ToastProvider>
+          </MemoryRouter>,
+        );
+      });
+      await flushMicrotasks();
+
+      const createBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('新增下游密钥'))[0];
+      await act(async () => {
+        createBtn.props.onClick();
+      });
+      await flushMicrotasks();
+
+      const advancedBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('高级配置'))[0];
+      await act(async () => {
+        advancedBtn.props.onClick();
+      });
+      await flushMicrotasks();
+
+      expect(collectText(root!.root)).toContain('允许使用的账号');
+      expect(collectText(root!.root)).toContain('已允许 2 / 2 个账号');
+
+      const inputs = root!.root.findAllByType('input');
+      const nameInput = inputs.find((node) => node.props.placeholder === '例如：项目 A / 移动端');
+      const keyInput = inputs.find((node) => node.props.placeholder === 'sk-...');
+      await act(async () => {
+        nameInput!.props.onChange({ target: { value: 'account-scoped-key' } });
+        keyInput!.props.onChange({ target: { value: 'sk-account-scoped' } });
+      });
+      await flushMicrotasks();
+
+      const accountALabel = root!.root.findAll((node) => node.type === 'label' && collectText(node) === '站点A账号站点A')[0];
+      const accountACheckbox = accountALabel.findByType('input');
+      await act(async () => {
+        accountACheckbox.props.onChange({ target: { checked: false } });
+      });
+      await flushMicrotasks();
+
+      expect(collectText(root!.root)).toContain('已允许 1 / 2 个账号');
+
+      const saveBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('创建密钥'))[0];
+      await act(async () => {
+        saveBtn.props.onClick();
+      });
+      await flushMicrotasks();
+
+      expect(apiMock.createDownstreamApiKey).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'account-scoped-key',
+        key: 'sk-account-scoped',
+        excludedCredentialRefs: [
+          { kind: 'default_api_key', siteId: 201, accountId: 101 },
+        ],
+      }));
+    } finally {
+      root?.unmount();
+    }
+  });
+
+  it('applies exclude-all and allow-all from the allowed accounts panel', async () => {
+    let root!: WebTestRenderer;
+    try {
+      await act(async () => {
+        root = create(
+          <MemoryRouter initialEntries={['/downstream-keys']}>
+            <ToastProvider>
+              <DownstreamKeys />
+            </ToastProvider>
+          </MemoryRouter>,
+        );
+      });
+      await flushMicrotasks();
+
+      const createBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('新增下游密钥'))[0];
+      await act(async () => {
+        createBtn.props.onClick();
+      });
+      await flushMicrotasks();
+
+      const advancedBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('高级配置'))[0];
+      await act(async () => {
+        advancedBtn.props.onClick();
+      });
+      await flushMicrotasks();
+
+      const inputs = root!.root.findAllByType('input');
+      const nameInput = inputs.find((node) => node.props.placeholder === '例如：项目 A / 移动端');
+      const keyInput = inputs.find((node) => node.props.placeholder === 'sk-...');
+      await act(async () => {
+        nameInput!.props.onChange({ target: { value: 'scope-all-key' } });
+        keyInput!.props.onChange({ target: { value: 'sk-scope-all' } });
+      });
+      await flushMicrotasks();
+
+      const excludeAllBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('全部排除'))[0];
+      await act(async () => {
+        excludeAllBtn.props.onClick();
+      });
+      await flushMicrotasks();
+
+      expect(collectText(root!.root)).toContain('已允许 0 / 2 个账号');
+
+      const saveBtn = root!.root.findAll((node) => node.type === 'button' && collectText(node).includes('创建密钥'))[0];
+      await act(async () => {
+        saveBtn.props.onClick();
+      });
+      await flushMicrotasks();
+
+      expect(apiMock.createDownstreamApiKey).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'scope-all-key',
+        key: 'sk-scope-all',
+        excludedCredentialRefs: [
+          { kind: 'default_api_key', siteId: 201, accountId: 101 },
+          { kind: 'default_api_key', siteId: 202, accountId: 102 },
         ],
       }));
     } finally {

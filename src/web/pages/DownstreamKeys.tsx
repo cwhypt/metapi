@@ -11,6 +11,7 @@ import { useIsMobile } from '../components/useIsMobile.js';
 import { tr } from '../i18n.js';
 import DownstreamKeyEditorModal, {
   TagInput,
+  type DownstreamAccountOption,
   type DownstreamCredentialOption,
   type DownstreamExcludedCredentialRef,
   type DownstreamKeyEditorForm,
@@ -477,6 +478,7 @@ export default function DownstreamKeys() {
   const [exclusionSourceLoaded, setExclusionSourceLoaded] = useState(false);
   const [exclusionSiteOptions, setExclusionSiteOptions] = useState<DownstreamSiteOption[]>([]);
   const [exclusionCredentialOptions, setExclusionCredentialOptions] = useState<DownstreamCredentialOption[]>([]);
+  const [exclusionAccountOptions, setExclusionAccountOptions] = useState<DownstreamAccountOption[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -586,6 +588,26 @@ export default function DownstreamKeys() {
             `${right.siteName}:${right.accountName}:${right.label}:${right.detail}`,
           )
         )),
+      );
+      setExclusionAccountOptions(
+        accountRows
+          .map((account: any) => {
+            const siteId = Number(account?.site?.id);
+            const accountId = Number(account?.id);
+            if (!Number.isFinite(siteId) || siteId <= 0 || !Number.isFinite(accountId) || accountId <= 0) return null;
+            const siteName = String(account?.site?.name || `站点 ${siteId}`).trim() || `站点 ${siteId}`;
+            const accountName = String(account?.username || `账号 ${accountId}`).trim() || `账号 ${accountId}`;
+            return {
+              accountId: Math.trunc(accountId),
+              siteId: Math.trunc(siteId),
+              siteName,
+              accountName,
+            };
+          })
+          .filter((item): item is DownstreamAccountOption => item !== null)
+          .sort((left: any, right: any) => (
+            `${left.siteName}:${left.accountName}`.localeCompare(`${right.siteName}:${right.accountName}`)
+          )),
       );
       setExclusionSourceLoaded(true);
     } catch (err: any) {
@@ -1282,6 +1304,7 @@ export default function DownstreamKeys() {
         exclusionSourceLoading={exclusionSourceLoading}
         siteOptions={exclusionSiteOptions}
         credentialOptions={exclusionCredentialOptions}
+        accountOptions={exclusionAccountOptions}
       />
 
       <CenteredModal
